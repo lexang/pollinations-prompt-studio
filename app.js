@@ -1,13 +1,13 @@
 /* Pollinations Prompt Studio — zero-dependency front-end.
- * Image generation goes through gen.pollinations.ai/image; when the user
- * has supplied their own key we send it as BYOP. Without a key the free
- * fallback endpoint is used. Model catalog is served keyless from the same
- * origin. No bundler, no framework.
+ * Image generation goes through Pollinations BYOP (Bring Your Own Pollen):
+ * the user's own user-authorized scoped key (sk_...) is sent to
+ * gen.pollinations.ai/image. No developer secret or app key is embedded, and
+ * the key never leaves this browser. The model catalog is served from the
+ * same origin. No bundler, no framework.
  */
 'use strict';
 
 const ENDPOINT_GEN_IMAGE = 'https://gen.pollinations.ai/image/';
-const ENDPOINT_IMAGE = 'https://image.pollinations.ai/prompt/';
 const ENDPOINT_MODELS = 'https://gen.pollinations.ai/v1/models';
 const ENDPOINT_TEXT = 'https://gen.pollinations.ai/text/';
 
@@ -26,14 +26,14 @@ const el = {
   keyField: $('keyField'), key: $('key'), model: $('model'), ratio: $('ratio'),
   seed: $('seed'), randomSeed: $('randomSeed'), enhance: $('enhance'), nologo: $('nologo'),
   generate: $('generate'), error: $('error'),
-  canvasWrap: $('canvasWrap'), empty: $('empty'), result: $('result'), result2: $('result2'),
+  canvasWrap: $('canvasWrap'), empty: $('empty'), result: $('result'),
   resultActions: $('resultActions'), download: $('download'), copyPrompt: $('copyPrompt'),
   copyUrl: $('copyUrl'), again: $('again'), genMeta: $('genMeta'), history: $('history'),
   clearHistory: $('clearHistory'), modelRefresh: $('modelRefresh'), keyToggle: $('keyToggle'),
 };
 
 /* ---------------- image generation ---------------- */
-function buildImageUrls() {
+function buildImageUrl() {
   const p = el.prompt.value.trim();
   if (!p) throw new Error('Enter a prompt first.');
   const [w, h] = el.ratio.value.split('x').map((n) => parseInt(n, 10));
@@ -49,15 +49,12 @@ function buildImageUrls() {
   params.set('seed', String(seed));
   const qs = params.toString();
   const enc = encodeURIComponent(p);
-  return {
-    gen: `${ENDPOINT_GEN_IMAGE}${enc}?${qs}`,
-    free: `${ENDPOINT_IMAGE}${enc}?${qs}`,
-  };
+  return `${ENDPOINT_GEN_IMAGE}${enc}?${qs}`;
 }
 
-/** Keyless stream load through the browser image cache. */
+/** Fetch a byte stream with BYOP. The user's key (sk_...) is sent as
+ *  Authorization: Bearer so it is only exposed to Pollinations itself. */
 async function loadImageBlob(url, key) {
-  // BYOP: user-authorized request carrying the user's own secret key.
   const res = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
   if (!res.ok) throw new Error(`Pollinations image request failed (${res.status}).`);
   return URL.createObjectURL(await res.blob());
@@ -68,50 +65,23 @@ async function generate() {
   const prompt = el.prompt.value.trim();
   const started = performance.now();
   try {
-    const urls = buildImageUrls();
+    const url = buildImageUrl();
     const key = el.key.value.trim();
-    const displayUrl = urls.gen;
     setBusy(true);
     showError('');
     el.empty.hidden = true;
-    el.result.hidden = true;
-    el.result2.hidden = true;
-    let src = displayUrl;
-    if (key) {
-      src = await loadImageBlob(urls.gen, key);
-    } else {
-      el.result2.src = urls.free;
-      await waitForImage(el.result2, 60000);
-      src = urls.free;
-    }
+    const src = await loadImageBlob(url, key);
     el.result.src = src;
-    el.result.dataset.url = displayUrl;
+    el.result.dataset.url = url;
     el.result.hidden = false;
-    el.result2.hidden = true;
-    el.result2.onload = null;
-    el.result2.onerror = null;
     el.resultActions.hidden = false;
     el.genMeta.textContent = `${prompt.slice(0, 42)}${prompt.length > 42 ? '…' : ''} · ${el.ratio.value.replace('x', '×')} · ${Math.round(performance.now() - started)} ms`;
-    addHistory({ url: displayUrl, prompt, ratio: el.ratio.value, blob: key ? src : '' });
+    addHistory({ url, prompt, ratio: el.ratio.value, blob: src });
   } catch (err) {
     showError(err.message);
   } finally {
     setBusy(false);
   }
-}
-
-function waitForImage(img, timeout) {
-  return new Promise((resolve, reject) => {
-    const done = (ok) => {
-      clearTimeout(timer);
-      img.onload = null;
-      img.onerror = null;
-      ok ? resolve() : reject(new Error('Pollinations did not return an image. Check the prompt or try again.'));
-    };
-    const timer = setTimeout(() => done(false), timeout);
-    img.onload = () => done(true);
-    img.onerror = () => done(false);
-  });
 }
 
 function setBusy(v) {
@@ -132,7 +102,7 @@ async function refine() {
   if (!prompt) { showError('Enter a rough idea first.'); return; }
   const key = el.key.value.trim();
   if (!key) {
-    showError('Enable “API key” and paste a Pollinations secret key (sk_…) to refine. Image generation still needs no key.');
+    showError('Enable “API key” and paste your own Pollinations secret key (sk_…) to refine and generate.');
     return;
   }
   try {
@@ -232,7 +202,6 @@ function wire() {
     el.result.src = blob || url;
     el.result.dataset.url = url;
     el.result.hidden = false;
-    el.result2.hidden = true;
     el.resultActions.hidden = false;
     el.genMeta.textContent = img.dataset.prompt ? `${img.dataset.prompt.slice(0, 42)} · loaded from history` : 'loaded from history';
     saveHistory([{ url, prompt: img.dataset.prompt, ratio: el.ratio.value, blob }]);

@@ -36,7 +36,7 @@ const server = http.createServer((req, res) => {
 
   if (pathname === '/health' || pathname === '/api/health') {
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, app: 'pollinations-prompt-studio', endpoints: { models: '/api/models', image: '/image/{prompt}' } }));
+    res.end(JSON.stringify({ ok: true, app: 'pollinations-prompt-studio', upstream: { models: 'https://gen.pollinations.ai/v1/models', image: 'https://gen.pollinations.ai/image/{prompt} (BYOP)' } }));
     return;
   }
 

@@ -1,9 +1,9 @@
 /* Pollinations Prompt Studio — zero-dependency front-end.
  * Image generation goes through Pollinations BYOP (Bring Your Own Pollen):
- * the user's own user-authorized scoped key (sk_...) is sent to
- * gen.pollinations.ai/image. No developer secret or app key is embedded, and
- * the key never leaves this browser. The model catalog is served from the
- * same origin. No bundler, no framework.
+ * your own user-authorized scoped secret key (sk_...) is sent to
+ * gen.pollinations.ai/image. No developer secret is embedded, and the key is
+ * never sent anywhere except Pollinations. The model catalog is a public call
+ * on the same origin. No bundler, no framework.
  */
 'use strict';
 

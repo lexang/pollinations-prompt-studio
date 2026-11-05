@@ -1,10 +1,12 @@
 /* Pollinations Prompt Studio — zero-dependency front-end.
- * Calls the free image endpoint (image.pollinations.ai) and, when a user
- * supplies their own secret key, text models through gen.pollinations.ai.
- * No bundler, no framework, no third-party accounts required.
+ * Image generation goes through gen.pollinations.ai/image; when the user
+ * has supplied their own key we send it as BYOP. Without a key the free
+ * fallback endpoint is used. Model catalog is served keyless from the same
+ * origin. No bundler, no framework.
  */
 'use strict';
 
+const ENDPOINT_GEN_IMAGE = 'https://gen.pollinations.ai/image/';
 const ENDPOINT_IMAGE = 'https://image.pollinations.ai/prompt/';
 const ENDPOINT_MODELS = 'https://gen.pollinations.ai/v1/models';
 const ENDPOINT_TEXT = 'https://gen.pollinations.ai/text/';
@@ -31,7 +33,7 @@ const el = {
 };
 
 /* ---------------- image generation ---------------- */
-function buildImageUrl() {
+function buildImageUrls() {
   const p = el.prompt.value.trim();
   if (!p) throw new Error('Enter a prompt first.');
   const [w, h] = el.ratio.value.split('x').map((n) => parseInt(n, 10));
@@ -45,34 +47,52 @@ function buildImageUrl() {
   const seedRaw = el.seed.value.trim();
   const seed = seedRaw === '' || seedRaw === 'random' ? Math.floor(Math.random() * 2147483647) : parseInt(seedRaw, 10);
   params.set('seed', String(seed));
-  return `${ENDPOINT_IMAGE}${encodeURIComponent(p)}?${params.toString()}`;
+  const qs = params.toString();
+  const enc = encodeURIComponent(p);
+  return {
+    gen: `${ENDPOINT_GEN_IMAGE}${enc}?${qs}`,
+    free: `${ENDPOINT_IMAGE}${enc}?${qs}`,
+  };
+}
+
+/** Keyless stream load through the browser image cache. */
+async function loadImageBlob(url, key) {
+  // BYOP: user-authorized request carrying the user's own secret key.
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${key}` } });
+  if (!res.ok) throw new Error(`Pollinations image request failed (${res.status}).`);
+  return URL.createObjectURL(await res.blob());
 }
 
 async function generate() {
   if (busy) return;
-  let url;
   const prompt = el.prompt.value.trim();
+  const started = performance.now();
   try {
-    url = buildImageUrl();
+    const urls = buildImageUrls();
+    const key = el.key.value.trim();
+    const displayUrl = urls.gen;
     setBusy(true);
     showError('');
     el.empty.hidden = true;
     el.result.hidden = true;
     el.result2.hidden = true;
-    // Scoped probe: keep the UI responsive while Pollinations renders.
-    const started = performance.now();
-    el.result2.src = url;
-    await waitForImage(el.result2, 60000);
-    el.result.src = url;
-    await waitForImage(el.result, 60000);
+    let src = displayUrl;
+    if (key) {
+      src = await loadImageBlob(urls.gen, key);
+    } else {
+      el.result2.src = urls.free;
+      await waitForImage(el.result2, 60000);
+      src = urls.free;
+    }
+    el.result.src = src;
+    el.result.dataset.url = displayUrl;
     el.result.hidden = false;
     el.result2.hidden = true;
     el.result2.onload = null;
     el.result2.onerror = null;
-    const ms = Math.round(performance.now() - started);
     el.resultActions.hidden = false;
-    el.genMeta.textContent = `${prompt.slice(0, 42)}${prompt.length > 42 ? '…' : ''} · ${el.ratio.value.replace('x', '×')} · ${ms} ms`;
-    addHistory({ url, prompt, ratio: el.ratio.value });
+    el.genMeta.textContent = `${prompt.slice(0, 42)}${prompt.length > 42 ? '…' : ''} · ${el.ratio.value.replace('x', '×')} · ${Math.round(performance.now() - started)} ms`;
+    addHistory({ url: displayUrl, prompt, ratio: el.ratio.value, blob: key ? src : '' });
   } catch (err) {
     showError(err.message);
   } finally {
@@ -174,7 +194,7 @@ function renderHistory() {
   const list = getHistory();
   if (!list.length) { el.history.innerHTML = '<p class="muted small">Nothing yet.</p>'; return; }
   el.history.innerHTML = list.map((d, i) =>
-    `<img src="${d.url}" alt="${escapeHtml(d.prompt)}" title="${escapeHtml(d.prompt)}" data-url="${escapeAttr(d.url)}" data-prompt="${escapeAttr(d.prompt)}">`
+    `<img src="${d.url}" alt="${escapeHtml(d.prompt)}" title="${escapeHtml(d.prompt)}" data-url="${escapeAttr(d.url)}" data-blob="${escapeAttr(d.blob || '')}" data-prompt="${escapeAttr(d.prompt)}">`
   ).join('');
 }
 function clearHistory() { saveHistory([]); renderHistory(); }
@@ -197,7 +217,7 @@ function wire() {
     a.remove();
   });
   el.copyPrompt.addEventListener('click', () => copy(el.prompt.value.trim(), 'prompt'));
-  el.copyUrl.addEventListener('click', () => copy(el.result.src || '', 'image URL'));
+  el.copyUrl.addEventListener('click', () => copy(el.result.dataset.url || el.result.src || '', 'image URL'));
   el.randomSeed.addEventListener('click', () => {
     el.seed.value = String(Math.floor(Math.random() * 2147483647));
   });
@@ -208,12 +228,14 @@ function wire() {
     if (!img) return;
     el.result.onerror = null;
     const url = img.dataset.url;
-    el.result.src = url;
+    const blob = img.dataset.blob;
+    el.result.src = blob || url;
+    el.result.dataset.url = url;
     el.result.hidden = false;
     el.result2.hidden = true;
     el.resultActions.hidden = false;
     el.genMeta.textContent = img.dataset.prompt ? `${img.dataset.prompt.slice(0, 42)} · loaded from history` : 'loaded from history';
-    saveHistory([{ url, prompt: img.dataset.prompt, ratio: el.ratio.value }]);
+    saveHistory([{ url, prompt: img.dataset.prompt, ratio: el.ratio.value, blob }]);
     renderHistory();
   });
   el.keyToggle.addEventListener('click', () => {

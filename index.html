@@ -35,9 +35,9 @@
     </div>
 
     <div class="field" id="keyField" hidden>
-      <label for="key">Pollinations secret key (optional, for text models)</label>
+      <label for="key">Pollinations secret key (optional)</label>
       <input id="key" type="password" placeholder="sk_..." autocomplete="off" />
-      <p class="muted small">Stored only in this browser. Image generation does <strong>not</strong> need a key.</p>
+      <p class="muted small">Stored only in this browser. With a key we send a BYOP request (Pollinations Pay) to <code>gen.pollinations.ai/image</code>; without one we render free with the same endpoint family.</p>
     </div>
 
     <div class="grid2">
@@ -49,9 +49,9 @@
         <label for="ratio">Aspect</label>
         <select id="ratio">
           <option value="1024x1024">Square 1024×1024</option>
-          <option value="1280x720">Landscape 1280×720</option>
+          <option value="1280x720" selected>Landscape 1280×720 (16:9)</option>
           <option value="768x1280">Portrait 768×1280</option>
-          <option value="832x1216">Content 832×1216</option>
+          <option value="1120x700">Content 16:9</option>
           <option value="1216x832">Wide 1216×832</option>
         </select>
       </div>
